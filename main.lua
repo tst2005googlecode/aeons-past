@@ -3,8 +3,9 @@ require("unit")
 require("astar")
 require("log")
 require("player")
+require("socket")
 
-function love.load()
+function love.load() -- this is a mess, I gotta clean it up eventually; TODO
 	love.graphics.setMode(1024, 768)
 	love.graphics.setCaption("Aeons Past")
 	
@@ -43,6 +44,11 @@ function love.load()
 	displayMode = "map" -- TODO: make all those bools and whistles a table
 	
 	eventLog = Log.new()
+	
+	client = nil
+	host = "localhost" -- TODO
+	port = 1802 -- TODO
+	timeout = 0
 	
 	math.randomseed(os.time())
 end
@@ -121,7 +127,14 @@ function love.draw()
 		
 		love.graphics.print("G: toggle grid; L: log; R: reroll names; N: toggle name display; Movement speed: "..speed.."; +/- to change", 10, 650)
 		love.graphics.print("Q: normal; W: 2spooky4u; E: yayifications;", 10, 670)
-		love.graphics.print("Enter: end turn; Escape: quit \"game\"", 10, 690)
+		love.graphics.print("Enter: end turn; Escape: quit \"game\"; S: connect to/disconnect from server", 10, 690)
+		
+		if client then
+			local message = client:receive("*l","Server connected! Message from server: ")
+			if message then
+				love.graphics.print(message, 10, 710)
+			end
+		end
 	elseif displayMode == "log" then
 		love.graphics.print(eventLog:ReadLastNEntries(10), 10, 2)
 	end
@@ -182,6 +195,29 @@ function DecreaseSpeed()
 	end
 end
 
+function ServerConnect()
+	local tcpSocket, error = socket.tcp()
+	
+	if not tcpSocket then
+		return error
+	end
+	
+	local result, error = tcpSocket:connect(host, port)
+	
+	if not result then
+		return error
+	end
+	
+	tcpSocket:settimeout(timeout)
+	
+	client = tcpSocket -- only if connection is well
+end
+
+function ServerDisconnect()
+	client:close()
+	client = nil
+end
+
 keyLookup = {
 	g = function() map.gridOn = not map.gridOn end, -- toggle grid
 	n = function() namesOn = not namesOn end, -- toggle names
@@ -194,6 +230,7 @@ keyLookup = {
 	q = function() map.world = "prime" end,
 	w = function() map.world = "deathford" end,
 	e = function() map.world = "lesca" end,
+	s = function() if not client then ServerConnect() else ServerDisconnect() end end,
 	
 	l = function() if displayMode ~= "log" then displayMode = "log" else displayMode = "map" end end,
 	
