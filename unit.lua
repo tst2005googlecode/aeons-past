@@ -11,15 +11,6 @@ unitNames = { -- silly little thing
 	partThree = {"head","meat","chunk","lift","flank","hair","stag","huge","fast","cheese","lots","chest","bone","gnaw","jaw","groin","man","peck","face","rock","meal","meat","cheek","iron","body","crunch","back","son","neck","steak","thrust","rod","muscle","beef","fist"}
 }
 
-unitGraphics = {
-	selection = love.graphics.newImage("unit/selection.png"),
-	
-	nographic = love.graphics.newImage("unit/nographic.png"),
-	
-	basic = love.graphics.newImage("unit/basic.png"),
-	amphibian = love.graphics.newImage("unit/amphibian.png")
-}
-
 MOVE_MODES = {
 	WALKING = {ground = 1, overgrowth = 2},
 	AMPHIBIAN = {ground = 1, overgrowth = 2, water = 2},
@@ -30,19 +21,20 @@ MOVE_MODES = {
 
 function Unit.new (map, unitType, coordinates, owner)
 	local unit = { -- default values
-			unitName = "derp",
+			unitType = unitType,
+            unitName = "derp",
 			
 			owner = owner,
 			
 			coordinates = coordinates,
 			pixelCoordinates,
 			
-			unitGraphic = "nographic",
+			imagePath = "unit/nographic.png",
 			
 			speed = 5, -- how many hexes per turn can this unit move
 			remainingMoves = 5,
 			
-			movementType = MOVE_MODES.WALKING,
+			movementType = {},
 			moving = false, -- for iterate moving instead of teleporting around
 			
 			acted = false -- if it attacked someone or whatever
@@ -54,29 +46,18 @@ function Unit.new (map, unitType, coordinates, owner)
 	unit.pixelCoordinates = map:Hex2PixelCoordinates(coordinates.x, coordinates.y)
 	
 	if unitType == "basic" then -- will make different units depending on type later on
-		unit.unitGraphic = "basic"
+		unit.movementType = MOVE_MODES.WALKING
 	elseif unitType == "amphibian" then
-		unit.unitGraphic = "amphibian"
 		unit.movementType = MOVE_MODES.AMPHIBIAN
 	end
 	
+    unit.imagePath = table.concat({"unit/",unit.unitType,".png"},"")
+    
 	map.tiles[unit.coordinates.y][unit.coordinates.x].containsUnit = unit
 	
 	table.insert(owner.units, unit)
 	
 	return unit
-end
-
-function Unit:Draw (map)	
-	love.graphics.draw(unitGraphics[self.unitGraphic], self.pixelCoordinates.x, self.pixelCoordinates.y)
-	
-	if self == currentPlayer.selectedUnit and not self.moving then
-		love.graphics.draw(unitGraphics.selection, self.pixelCoordinates.x, self.pixelCoordinates.y)
-	end
-	
-	if namesOn then
-		love.graphics.printf(self.unitName, self.pixelCoordinates.x, self.pixelCoordinates.y + map.hexDimensionY * 0.60, map.hexDimensionX, "center") -- magic numbers!
-	end
 end
 
 function Unit:CheckValidDestination (map, coordinates)
