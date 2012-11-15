@@ -5,6 +5,7 @@ require("log")
 require("player")
 require("socket")
 require("renderer")
+require("tserial")
 
 function love.load() -- this is a mess, I gotta clean it up eventually; TODO
     love.graphics.setMode(1024, 768)
@@ -16,27 +17,25 @@ function love.load() -- this is a mess, I gotta clean it up eventually; TODO
     
     mouseLastHex = {x = 0, y = 0}
     
-    map = Map.new("map.txt")
+    map = nil
     
     playerList = PlayerList.new()
-    
     Player.new(playerList)
     Player.new(playerList)
-    
     currentPlayer = playerList:GetCurrentPlayer()
-        
     units = {}
-    
+    --[[
     units[1] = Unit.new (map, "basic",  {x = 6, y = 6}, playerList.players[1])
     units[2] = Unit.new (map, "basic",  {x = 1, y = 6}, playerList.players[1])
     units[3] = Unit.new (map, "amphibian", {x = 10, y = 3}, playerList.players[2])
     
     currentPlayer.selectedUnit = units[1]
+    ]]--
     
     unitPath = {} -- current path which the active unit has to traverse to get to the hex the mouse is pointing at
     unitAccess = {} -- for displaying the area you can move to
     
-    unitAccess = currentPlayer.selectedUnit:GetAccessibleHexes(map, currentPlayer.selectedUnit.speed, currentPlayer.selectedUnit.coordinates)
+    --unitAccess = currentPlayer.selectedUnit:GetAccessibleHexes(map, currentPlayer.selectedUnit.speed, currentPlayer.selectedUnit.coordinates)
     
     namesOn = true
     displayMode = "map" -- TODO: make all those bools and whistles a table
@@ -63,8 +62,27 @@ function FunctionWithParam( ... ) -- closure function; courtesy of ktd; gotta go
 end
 
 function love.update(dt)
+    -- server stuff has max priority
+    if client then
+        local message = client:receive("*l")
+        if message then
+            packet = TSerial.unpack(message)
+            if packet[1] == "map" then
+                map = packet[2]
+                setmetatable(map, Map)
+            end
+            love.graphics.print(message, 10, 710)
+        end
+    end
+
+    -- wait for map from server to start actually updating stuff
+    if not map then
+        return
+    end
+
     local mouseX = love.mouse.getX()
     local mouseY = love.mouse.getY()
+
     
     if mouseX > 0 and mouseX < map.currentPixelX and mouseY > 0 and mouseY < map.currentPixelY then
         local mouseCurrentHex = map:Pixel2HexCoordinates(mouseX, mouseY)
@@ -72,7 +90,7 @@ function love.update(dt)
         if map:CheckValidCoordinates(mouseCurrentHex) then
             if mouseLastHex.x ~= mouseCurrentHex.x or mouseLastHex.y ~= mouseCurrentHex.y then -- if the mouse moved from the last hex it was in; so that A* isn't called every tick
                 mouseLastHex = mouseCurrentHex
-                if not currentPlayer.selectedUnit.moving then
+                if currentPlayer.selectedUnit and not currentPlayer.selectedUnit.moving then
                     unitPath = AStarFindPath(map, currentPlayer.selectedUnit, currentPlayer.selectedUnit.coordinates, mouseCurrentHex)
                 end
             end
@@ -83,7 +101,7 @@ function love.update(dt)
         mouseLastHex.x, mouseLastHex.y = 0, 0
     end
     
-    if currentPlayer.selectedUnit.moving then
+    if currentPlayer.selectedUnit and currentPlayer.selectedUnit.moving then
         if #unitPath > 0 then
             if currentPlayer.selectedUnit:TryMove(map, unitPath[#unitPath]) then
                 table.remove(unitPath)
@@ -95,10 +113,13 @@ function love.update(dt)
 end
 
 function love.draw()
+    if not map then
+        return
+    end
     if displayMode == "map" then
         renderer:RenderMap(map)
         
-        if mouseLastHex.x ~= 0 and not currentPlayer.selectedUnit.moving then -- if it's not outside the grid basically
+        if mouseLastHex.x ~= 0 and not (currentPlayer.selectedUnit and currentPlayer.selectedUnit.moving) then -- if it's not outside the grid basically
             local mouseCoordinatesAdjustedToGrid = map:Hex2PixelCoordinates(mouseLastHex.x, mouseLastHex.y)
                     
             renderer:Render({imagePath = "mouseselection.png"}, mouseCoordinatesAdjustedToGrid)
@@ -111,7 +132,7 @@ function love.draw()
             end
         end
         
-        if not currentPlayer.selectedUnit.moving then
+        if currentPlayer.selectedUnit and not currentPlayer.selectedUnit.moving then
             for key, value in pairs(unitAccess) do
                 local pixelCoordinates = map:Hex2PixelCoordinates(value.x, value.y)
                 renderer:Render({imagePath = "unit/moveable.png"}, pixelCoordinates) -- right now covers the unit and the selection on it; TODO: fix that
@@ -122,12 +143,6 @@ function love.draw()
 --      love.graphics.print("Q: normal; W: 2spooky4u; E: yayifications;", 10, 670)
         love.graphics.print("Enter: end turn; Escape: quit \"game\"; S: connect to/disconnect from server", 10, 690)
         
-        if client then
-            local message = client:receive("*l","Server connected! Message from server: ")
-            if message then
-                love.graphics.print(message, 10, 710)
-            end
-        end
     elseif displayMode == "log" then
         love.graphics.print(eventLog:ReadLastNEntries(10), 10, 2)
     end
